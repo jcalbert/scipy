@@ -697,12 +697,28 @@ odepack_odeint(PyObject *dummy, PyObject *args, PyObject *kwdict)
 
         tout_ptr = tout + k;
         /* Use tcrit if relevant */
-        if (itask == 4 && *tout_ptr > *(tcrit + crit_ind)) {
-            crit_ind++;
-            rwork[0] = *(tcrit+crit_ind);
-        }
-        if (crit_ind >= numcrit) {
-            itask = 1;  /* No more critical values */
+
+        if (itask == 4){
+            if (*(tcrit+crit_ind) == t){ //If we're currently at a t_crit
+                crit_ind++;
+                rwork[0] = *(tcrit+crit_ind);
+                if (crit_ind >= numcrit){
+                    itask = 1;
+                    continue;
+                }
+            }
+
+            /*
+            If t_crit comes before next t_out, evolve to
+            that time but don't store results.
+            */
+            if ( *(tcrit + crit_ind) < *tout_ptr ){
+                LSODA(ode_function, &neq, y, &t, (tcrit + crit_ind), &itol, rtol, atol, &itask,
+                &istate, &iopt, rwork, &lrw, iwork, &liw,
+                ode_jacobian_function, &jt);
+
+                continue;
+            }
         }
 
         LSODA(ode_function, &neq, y, &t, tout_ptr, &itol, rtol, atol, &itask,
