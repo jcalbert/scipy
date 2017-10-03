@@ -316,6 +316,12 @@ def quad(func, a, b, args=(), full_output=0, epsabs=1.49e-8, epsrel=1.49e-8,
        # 1.3333333333333333
 
     """
+    if epsabs <= 0:
+        if epsrel <= 50 * sys.float_info.epsilon or epsrel < 5e-29:
+            raise ValueError("If ``errabs<=0``, `epsrel` must be greater than both 5e-29 and 50*(machine epsilon).")
+        elif weight in ['sin','cos'] and (abs(a) + abs(b) == Inf):
+            raise ValueError("sin- or cos- weighted intergals with infinite bounds must have ``epsabs>0``.")
+
     if not isinstance(args, tuple):
         args = (args,)
     if (weight is None):
@@ -384,6 +390,8 @@ def _quad(func,a,b,args,full_output,epsabs,epsrel,limit,points):
         raise RuntimeError("Infinity comparisons don't work for you.")
 
     if points is None:
+        if limit < 1:
+            raise ValueError("Number of sub-intervals `limit` must be >=1.")
         if infbounds == 0:
             return _quadpack._qagse(func,a,b,args,full_output,epsabs,epsrel,limit)
         else:
@@ -392,6 +400,11 @@ def _quad(func,a,b,args,full_output,epsabs,epsrel,limit,points):
         if infbounds != 0:
             raise ValueError("Infinity inputs cannot be used with break points.")
         else:
+            if max(points) > max(a,b) or min(points) < min(a,b):
+                raise ValueError("All break points in `points` must lie within the integration bonds.")
+            if len(points) >= limit:
+                raise ValueError("Number of break points ({:d}) must be less than subinterval limit ({:d})".format(len(points), limit))
+
             nl = len(points)
             the_points = numpy.zeros((nl+2,), float)
             the_points[:nl] = points
@@ -399,13 +412,16 @@ def _quad(func,a,b,args,full_output,epsabs,epsrel,limit,points):
 
 
 def _quad_weight(func,a,b,args,full_output,epsabs,epsrel,limlst,limit,maxp1,weight,wvar,wopts):
-
     if weight not in ['cos','sin','alg','alg-loga','alg-logb','alg-log','cauchy']:
         raise ValueError("%s not a recognized weighting function." % weight)
+    if maxp1 < 1:
+        raise ValueError("Chebyshev moment limit `maxp1` must be >=1.")
 
     strdict = {'cos':1,'sin':2,'alg':1,'alg-loga':2,'alg-logb':3,'alg-log':4}
 
     if weight in ['cos','sin']:
+        if abs(a+b) == Inf and limlst < 3: #only true for half-infinite ranges
+            raise ValueError("`limlst` must be >=3.")
         integr = strdict[weight]
         if (b != Inf and a != -Inf):  # finite limits
             if wopts is None:         # no precomputed chebyshev moments
@@ -443,10 +459,18 @@ def _quad_weight(func,a,b,args,full_output,epsabs,epsrel,limlst,limit,maxp1,weig
             raise ValueError("Cannot integrate with this weight over an infinite interval.")
 
         if weight[:3] == 'alg':
+            if min(wvar) < -1:
+                raise ValueError("`wvar` parameters ``(alpha,beta)`` must both be >= -1.")
+            if b<a:
+                raise ValueError("Integration limits `a`,`b` must satistfy `a<b`.")
+
             integr = strdict[weight]
             return _quadpack._qawse(func, a, b, wvar, integr, args,
                                     full_output, epsabs, epsrel, limit)
         else:  # weight == 'cauchy'
+            if wvar in (a,b):
+                raise ValueError("Parameter `wvar` must not equal integration limits `a` or `b`.")
+
             return _quadpack._qawce(func, a, b, wvar, args, full_output,
                                     epsabs, epsrel, limit)
 
